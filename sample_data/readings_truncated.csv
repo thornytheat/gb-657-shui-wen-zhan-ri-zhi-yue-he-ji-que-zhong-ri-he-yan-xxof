@@ -1,0 +1,4 @@
+meter_id,register,read_at,reading,unit,read_type,note
+007,TOTAL,2026-02-01T00:00:00+08:00,100.0,kWh,N,
+007,TOTAL,2026-03-01T00:00:00+08:00,300.0,kWh,N,
+007,TOTAL,2026-04-01T00:00:00+08:00,4

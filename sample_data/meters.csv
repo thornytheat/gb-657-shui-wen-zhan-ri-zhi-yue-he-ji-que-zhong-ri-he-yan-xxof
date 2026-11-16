@@ -1,0 +1,9 @@
+meter_id,name,capacity,multiplier,unit,registers,replaced_at,replaced_by
+M0001,临江一号泵站,99999.9,1,kWh,TOTAL;PEAK;FLAT;VALLEY,,
+M0002,砖厂专变,99999.9,40,kWh,TOTAL,,
+M0003,抽水站,9999.9,1,kWh,TOTAL,,
+M0004,老仓库,99999.9,1,kWh,TOTAL,2026-02-10T00:00:00+08:00,M0005
+M0005,新仓库,99999.9,1,kWh,TOTAL,,
+M0006,排灌站,999.9,1,MWh,TOTAL,,
+007,七号井,99999.9,1,kWh,TOTAL,,
+M0008,自来水厂,99999.9,1,kWh,TOTAL;PEAK;FLAT;VALLEY,,

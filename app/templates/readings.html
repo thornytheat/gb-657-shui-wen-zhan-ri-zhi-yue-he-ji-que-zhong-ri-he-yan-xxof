@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block body %}
+<section class="page-head">
+  <div>
+    <h1 class="page-title">读数诊断</h1>
+    <p class="page-meta mono">
+      {% if batch %}{{ batch.batch_id }} · {{ batch.sample }} · {{ batch.created_at|localdt }}{% else %}未运行{% endif %}
+    </p>
+  </div>
+  <div class="actions">
+    <label class="field-inline">
+      <span class="field-label">样例</span>
+      <select id="sample-select" class="select">
+        {% for item in samples %}
+        <option value="{{ item.name }}"{% if not item.exists %} disabled{% endif %}>{{ item.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <button class="btn btn-primary" id="import-button" type="button">导入</button>
+    <a class="btn btn-ghost" href="/api/quarantine.csv">隔离区 CSV</a>
+  </div>
+</section>
+
+<div class="notice" id="notice" role="status" hidden></div>
+
+{% if not readings %}
+<section class="empty"><p class="empty-line">没有读数行，先导入样例。</p></section>
+{% else %}
+<section class="kpis" aria-label="读数合计">
+  <div class="kpi"><span class="kpi-label">原始行</span><span class="kpi-value mono">{{ totals.raw_lines }}</span></div>
+  <div class="kpi"><span class="kpi-label">有效读数</span><span class="kpi-value mono">{{ totals.valid }}</span></div>
+  <div class="kpi"><span class="kpi-label">估抄</span><span class="kpi-value mono">{{ totals.estimate }}</span></div>
+  <div class="kpi"><span class="kpi-label">隔离</span><span class="kpi-value mono">{{ totals.quarantine }}</span></div>
+  <div class="kpi"><span class="kpi-label">编码</span><span class="kpi-value mono">{{ totals.encoding }}</span></div>
+  <div class="kpi"><span class="kpi-label">分段</span><span class="kpi-value mono">{{ totals.segments }}</span></div>
+</section>
+
+<section class="panel">
+  <div class="panel-head">
+    <h2 class="panel-title">读数行</h2>
+    <span class="panel-sub mono">{{ readings|length }} 行</span>
+  </div>
+  <div class="table-wrap">
+    <table class="table table-dense" data-sortable>
+      <thead>
+        <tr><th data-key="lineno">行号</th><th data-key="segment">段</th><th data-key="meter_id">表号</th>
+          <th data-key="register">寄存器</th><th data-key="read_at">抄表时间</th>
+          <th data-key="reading_text" class="num">原始读数</th><th data-key="reading_norm" class="num">折合读数</th>
+          <th data-key="read_type">类型</th><th data-key="status">状态</th></tr>
+      </thead>
+      <tbody>
+        {% for row in readings %}
+        <tr>
+          <td class="mono">{{ row.lineno }}</td>
+          <td class="mono">{{ row.segment }}</td>
+          <td class="mono">{{ row.meter_id }}</td>
+          <td>{{ row.register|reg }}</td>
+          <td class="mono">{{ row.read_at|localdt }}</td>
+          <td class="num mono">{{ row.reading_text }}</td>
+          <td class="num mono">{{ row.reading_norm|dec }}</td>
+          <td>{{ row.read_type|status }}</td>
+          <td><span class="badge badge-{{ 'warn' if row.status == 'estimate' else 'ok' }}">{{ row.status|status }}</span></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="panel-head">
+    <h2 class="panel-title">隔离区</h2>
+    <span class="panel-sub mono">{{ qsummary.total }} 条 · 错误 {{ qsummary.by_level.error }}</span>
+  </div>
+  {% if quarantine %}
+  <div class="chips">
+    {% for item in distribution %}
+    <span class="chip chip-{{ 'bad' if item.level == 'error' else 'warn' }}">{{ item.code }} <b class="mono">{{ item.count }}</b></span>
+    {% endfor %}
+  </div>
+  <div class="table-wrap">
+    <table class="table table-dense" data-sortable>
+      <thead><tr><th data-key="lineno">行号</th><th data-key="code">原因码</th><th data-key="field">字段</th>
+        <th data-key="raw_value">原始值</th><th data-key="meter_id">表号</th><th data-key="detail">说明</th><th data-key="level">等级</th></tr></thead>
+      <tbody>
+        {% for row in quarantine %}
+        <tr>
+          <td class="mono">{{ row.lineno }}</td>
+          <td class="mono">{{ row.code }}</td>
+          <td>{{ row.field }}</td>
+          <td class="mono cell-raw" title="{{ row.raw_value }}">{{ row.raw_value }}</td>
+          <td class="mono">{{ row.meter_id }}</td>
+          <td class="cell-note">{{ row.detail }}</td>
+          <td><span class="badge badge-{{ 'bad' if row.level == 'error' else 'warn' }}">{{ row.level }}</span></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="empty-line">没有隔离行。</p>
+  {% endif %}
+</section>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+<script src="/static/app.js" type="module"></script>
+<script src="/static/table.js" type="module"></script>
+{% endblock %}

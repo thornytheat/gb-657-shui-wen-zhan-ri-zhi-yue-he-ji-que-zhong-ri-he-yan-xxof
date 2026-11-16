@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block body %}
+<section class="page-head">
+  <div><h1 class="page-title">月合计</h1><p class="page-meta mono">2024-02 · 当地自然日</p></div>
+  <div class="actions"><a class="btn btn-primary" href="/api/export/monthly.csv">导出月报</a></div>
+</section>
+
+{% if not batch %}
+<section class="empty"><p class="empty-line">先运行日值样例。</p></section>
+{% else %}
+
+<section class="kpis" aria-label="月报合计">
+  <div class="kpi"><span class="kpi-label">输入日值</span><span class="kpi-value mono">{{ hydro_accounts.source }}</span></div>
+  <div class="kpi"><span class="kpi-label">采纳</span><span class="kpi-value mono">{{ hydro_accounts.accepted }}</span></div>
+  <div class="kpi"><span class="kpi-label">重复版本</span><span class="kpi-value mono">{{ hydro_accounts.duplicates }}</span></div>
+  <div class="kpi"><span class="kpi-label">差额</span><span class="kpi-value mono">{{ hydro_accounts.delta }}</span></div>
+</section>
+
+<section class="panel">
+  <div class="panel-head"><h2 class="panel-title">站点月报</h2><span class="panel-sub mono">闰年二月 · 29 日</span></div>
+  <div class="table-wrap"><table class="table table-dense">
+    <thead><tr><th>行</th><th>站号</th><th>月份</th><th class="num">雨量</th><th class="num">实有日</th><th class="num">缺日</th><th>状态</th></tr></thead>
+    <tbody>{% for row in hydro_months %}<tr><td class="mono">{{ loop.index }}</td><td class="mono">{{ row.station }}</td><td class="mono">{{ row.month }}</td><td class="num mono">{{ row.rainfall_mm }} mm</td><td class="num mono">{{ row.days }}</td><td class="num mono">{{ row.missing_days }}</td><td><span class="badge {% if row.state == 'complete' %}badge-ok{% else %}badge-warn{% endif %}">{{ row.state }}</span></td></tr>{% endfor %}</tbody>
+  </table></div>
+</section>
+
+<section class="panel">
+  <div class="panel-head"><h2 class="panel-title">日值版本</h2><span class="panel-sub mono">零雨保留 · 高版本优先</span></div>
+  <div class="table-wrap"><table class="table table-dense">
+    <thead><tr><th>站号</th><th>日期</th><th class="num">雨量</th><th class="num">版本</th><th>判定</th></tr></thead>
+    <tbody>{% for row in hydro_selected.selected %}<tr><td class="mono">{{ row.station }}</td><td class="mono">{{ row.date }}</td><td class="num mono">{{ row.rainfall_mm }} mm</td><td class="num mono">{{ row.version }}</td><td><span class="badge badge-ok">采纳</span></td></tr>{% endfor %}{% for row in hydro_selected.duplicates %}<tr><td class="mono">{{ row.station }}</td><td class="mono">{{ row.date }}</td><td class="num mono">{{ row.rainfall_mm }} mm</td><td class="num mono">{{ row.version }}</td><td><span class="badge badge-warn">低版本</span></td></tr>{% endfor %}</tbody>
+  </table></div>
+</section>
+{% endif %}
+{% endblock %}

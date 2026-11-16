@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ page_title }} · hydrocalendar</title>
+  <link rel="stylesheet" href="/static/theme.css">
+  <link rel="stylesheet" href="/static/layout.css">
+  <link rel="stylesheet" href="/static/components.css">
+</head>
+<body data-page="{{ page }}">
+<div class="shell">
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">▤</span>
+      <span class="brand-name">hydrocalendar</span>
+      <span class="brand-sub">水文月报</span>
+    </div>
+    <nav class="nav" aria-label="主导航">
+      {% for href, label, key in nav %}
+      <a class="nav-link{% if page == key %} is-active{% endif %}" href="{{ href }}">{{ label }}</a>
+      {% endfor %}
+    </nav>
+    <div class="topbar-meta">
+      <span class="meta-label">批次</span>
+      <span class="meta-value mono">{% if batch %}{{ batch.batch_id }}{% else %}—{% endif %}</span>
+      <span class="meta-label">规则</span>
+      <span class="meta-value mono">{{ rule_version }}</span>
+    </div>
+  </header>
+
+  <div class="stagebar" aria-label="阶段条">
+    {% for key in stage_keys %}
+    {% set row = stages|selectattr('stage', 'equalto', key)|first %}
+    <div class="stagebar-node{% if row and row.status == 'ok' %} is-done{% elif row and row.status == 'failed' %} is-failed{% elif row %} is-partial{% else %} is-idle{% endif %}">
+      <span class="stagebar-index mono">{{ loop.index }}</span>
+      <span class="stagebar-label">{{ stage_labels[key] }}</span>
+    </div>
+    {% if not loop.last %}<span class="stagebar-line" aria-hidden="true"></span>{% endif %}
+    {% endfor %}
+  </div>
+
+  <main class="main">
+    {% block body %}{% endblock %}
+  </main>
+
+  <footer class="foot">
+    <span class="mono">{{ generated_at }}</span>
+    <span class="mono">{{ timezone_label }}</span>
+    <span class="mono">日值 mm / 月合计 mm</span>
+    <span class="mono">打印于 {{ print_ts }}</span>
+  </footer>
+</div>
+{% block scripts %}{% endblock %}
+</body>
+</html>

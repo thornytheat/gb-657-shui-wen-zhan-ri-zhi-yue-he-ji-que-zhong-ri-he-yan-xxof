@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block body %}
+<section class="page-head">
+  <div>
+    <h1 class="page-title">区间还原</h1>
+    <p class="page-meta mono">
+      {% if batch %}{{ batch.batch_id }} · {{ batch.sample }} · {{ batch.created_at|localdt }}{% else %}未运行{% endif %}
+    </p>
+  </div>
+  <div class="actions">
+    <button class="btn btn-primary" id="rebuild-button" type="button">重算区间</button>
+    <a class="btn btn-ghost" href="/api/export/intervals.csv">区间 CSV</a>
+  </div>
+</section>
+
+<div class="notice" id="notice" role="status" hidden></div>
+
+{% if not intervals %}
+<section class="empty"><p class="empty-line">没有区间，先跑一次处理。</p></section>
+{% else %}
+<section class="kpis" aria-label="区间合计">
+  <div class="kpi"><span class="kpi-label">区间数</span><span class="kpi-value mono">{{ intervals|length }}</span></div>
+  <div class="kpi"><span class="kpi-label">主表用量</span><span class="kpi-value mono">{{ totals.interval_usage|kwh }}</span><span class="kpi-unit">kWh</span></div>
+  <div class="kpi"><span class="kpi-label">翻转</span><span class="kpi-value mono">{{ method_counts.rollover or 0 }}</span></div>
+  <div class="kpi"><span class="kpi-label">新表首读</span><span class="kpi-value mono">{{ method_counts.replacement_first or 0 }}</span></div>
+  <div class="kpi"><span class="kpi-label">带标记</span><span class="kpi-value mono">{{ flagged|length }}</span></div>
+</section>
+
+{% if swaps %}
+<section class="panel">
+  <div class="panel-head"><h2 class="panel-title">换表事件</h2></div>
+  <table class="table table-compact">
+    <thead><tr><th>旧表</th><th>新表</th><th>换表时点</th></tr></thead>
+    <tbody>
+      {% for item in swaps %}
+      <tr><td class="mono">{{ item.meter_id }}</td><td class="mono">{{ item.replaced_by }}</td>
+        <td class="mono">{{ item.replaced_at|localdt }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
+
+<section class="panel">
+  <div class="panel-head">
+    <h2 class="panel-title">区间明细</h2>
+    <span class="panel-sub mono">半开区间 [起, 止)</span>
+  </div>
+  <div class="table-wrap">
+    <table class="table table-dense" data-sortable>
+      <thead>
+        <tr><th data-key="interval_id">区间号</th><th data-key="meter_id">表号</th><th data-key="register">寄存器</th>
+          <th data-key="start_at">起</th><th data-key="end_at">止</th><th data-key="days" class="num">天数</th>
+          <th data-key="prev_reading" class="num">上次</th><th data-key="cur_reading" class="num">本次</th>
+          <th data-key="delta" class="num">差值</th><th data-key="multiplier" class="num">倍率</th>
+          <th data-key="usage_kwh" class="num">用量</th><th data-key="method">判定</th><th data-key="flags">标记</th></tr>
+      </thead>
+      <tbody>
+        {% for row in intervals %}
+        <tr>
+          <td class="mono">{{ row.interval_id }}</td>
+          <td class="mono">{{ row.meter_id }}</td>
+          <td>{{ row.register|reg }}</td>
+          <td class="mono">{{ row.start_at|localdt }}</td>
+          <td class="mono">{{ row.end_at|localdt }}</td>
+          <td class="num mono">{{ row.days|days }}</td>
+          <td class="num mono">{{ row.prev_reading|dec }}</td>
+          <td class="num mono">{{ row.cur_reading|dec }}</td>
+          <td class="num mono">{{ row.delta|dec }}</td>
+          <td class="num mono">{{ row.multiplier|dec }}</td>
+          <td class="num mono strong">{{ row.usage_kwh|kwh }}</td>
+          <td><span class="badge badge-{{ 'warn' if row.method != 'normal' else 'plain' }}">{{ row.method|method }}</span></td>
+          <td class="cell-flags mono">{% for flag in row.flags %}<span class="chip chip-info">{{ flag }}</span>{% endfor %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+<script src="/static/app.js" type="module"></script>
+<script src="/static/table.js" type="module"></script>
+{% endblock %}

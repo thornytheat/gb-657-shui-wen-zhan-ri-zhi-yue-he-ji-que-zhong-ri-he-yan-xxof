@@ -1,0 +1,21 @@
+services:
+  app:
+    build: .
+    image: hydrocalendar:local
+    environment:
+      HYDROCALENDAR_DB: /data/hydrocalendar.sqlite
+      HYDROCALENDAR_SAMPLE_DIR: /app/sample_data
+      TZ: Asia/Shanghai
+    ports:
+      - "18216:8000"
+    volumes:
+      - hydrocalendar-data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://127.0.0.1:8000/api/health', timeout=2.0)"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 5s
+
+volumes:
+  hydrocalendar-data:

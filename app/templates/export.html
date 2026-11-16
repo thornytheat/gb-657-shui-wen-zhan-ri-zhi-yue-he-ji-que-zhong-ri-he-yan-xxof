@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block body %}
+<section class="page-head">
+  <div>
+    <h1 class="page-title">导出</h1>
+    <p class="page-meta mono">
+      {% if batch %}{{ batch.batch_id }} · {{ batch.input_digest[:16] }}{% else %}未运行{% endif %}
+    </p>
+  </div>
+  <div class="actions">
+    <button class="btn btn-ghost" type="button" data-print>打印</button>
+  </div>
+</section>
+
+<div class="notice" id="notice" role="status" hidden></div>
+
+{% if not batch %}
+<section class="empty"><p class="empty-line">没有可导出的批次，先跑一次处理。</p></section>
+{% else %}
+<section class="panel">
+  <div class="panel-head">
+    <h2 class="panel-title">文件</h2>
+    <span class="panel-sub mono">{{ counts.allocations }} 分摊 · {{ counts.intervals }} 区间 · {{ counts.quarantine }} 隔离</span>
+  </div>
+  <table class="table">
+    <thead><tr><th>文件</th><th class="num">行数</th><th>下载</th></tr></thead>
+    <tbody>
+      {% for item in files %}
+      <tr>
+        <td>{{ item.label }}</td>
+        <td class="num mono">{{ item.rows }}</td>
+        <td><a class="link" href="{{ item.href }}">{{ item.key }}</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<section class="panel">
+  <div class="panel-head">
+    <h2 class="panel-title">清单字段</h2>
+    <span class="panel-sub mono">{{ manifest_summary|length }} 项</span>
+  </div>
+  <dl class="manifest">
+    {% for item in manifest_summary %}
+    <div class="manifest-row"><dt>{{ item.label }}</dt><dd class="mono">{{ item.value }}</dd></div>
+    {% endfor %}
+  </dl>
+</section>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+<script src="/static/app.js" type="module"></script>
+{% endblock %}

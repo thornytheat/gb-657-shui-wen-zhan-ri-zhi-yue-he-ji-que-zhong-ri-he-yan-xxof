@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block body %}
+<section class="page-head">
+  <div>
+    <h1 class="page-title">作业总览</h1>
+    <p class="page-meta mono">
+      {% if batch %}{{ batch.run_id }} · {{ batch.sample }} · {{ batch.created_at|localdt }}{% else %}未运行{% endif %}
+      <span class="dot-sep">·</span>{{ totals.meter_count }} 只表
+    </p>
+  </div>
+  <div class="actions">
+    <label class="field-inline">
+      <span class="field-label">样例</span>
+      <select id="sample-select" class="select">
+        {% for item in samples %}
+        <option value="{{ item.name }}"{% if not item.exists %} disabled{% endif %}>{{ item.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <button class="btn btn-primary" id="run-button" type="button">开始处理</button>
+    <button class="btn btn-ghost" id="rerun-button" type="button">重跑</button>
+  </div>
+</section>
+
+<div class="notice" id="notice" role="status" hidden></div>
+
+{% if not batch %}
+<section class="empty">
+  <p class="empty-line">还没有运行记录，点开始处理。</p>
+</section>
+{% else %}
+<section class="kpis" aria-label="合计">
+  <div class="kpi"><span class="kpi-label">读数行</span><span class="kpi-value mono">{{ totals.raw_lines }}</span></div>
+  <div class="kpi"><span class="kpi-label">有效</span><span class="kpi-value mono">{{ totals.valid }}</span></div>
+  <div class="kpi"><span class="kpi-label">隔离</span><span class="kpi-value mono">{{ totals.quarantine }}</span></div>
+  <div class="kpi"><span class="kpi-label">区间用量</span><span class="kpi-value mono">{{ totals.interval_usage|kwh }}</span><span class="kpi-unit">kWh</span></div>
+  <div class="kpi"><span class="kpi-label">月度用量</span><span class="kpi-value mono">{{ totals.month_usage|kwh }}</span><span class="kpi-unit">kWh</span></div>
+  <div class="kpi"><span class="kpi-label">电费</span><span class="kpi-value mono">{{ totals.bill_amount|yuan }}</span><span class="kpi-unit">元</span></div>
+</section>
+
+<section class="panel">
+  <div class="panel-head">
+    <h2 class="panel-title">阶段卡</h2>
+    <span class="panel-sub mono">{{ totals.segments }} 段 · {{ totals.encoding }}</span>
+  </div>
+  <div class="cards" id="stage-cards">
+    {% for row in stages %}
+    <article class="card{% if row.status == 'failed' %} card-failed{% endif %}" data-stage="{{ row.stage }}">
+      <div class="card-head">
+        <span class="card-index mono">{{ loop.index }}</span>
+        <h3 class="card-title">{{ stage_labels[row.stage] }}</h3>
+        <span class="badge badge-{{ 'bad' if row.status == 'failed' else 'ok' }}">{{ row.status|status }}</span>
+      </div>
+      <dl class="card-counts">
+        <div><dt>进</dt><dd class="mono">{{ row.in_count }}</dd></div>
+        <div><dt>出</dt><dd class="mono">{{ row.out_count }}</dd></div>
+        <div><dt>隔离</dt><dd class="mono">{{ row.quarantine_count }}</dd></div>
+      </dl>
+      <p class="card-note mono">{{ row.note }}</p>
+      <p class="card-time mono">{{ row.elapsed_ms }} ms</p>
+      {% if row.status == 'failed' %}
+      <button class="btn btn-warn btn-sm retry-button" type="button" data-batch="{{ batch.batch_id }}">重试</button>
+      {% endif %}
+    </article>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="panel">
+  <div class="panel-head">
+    <h2 class="panel-title">四账</h2>
+    <span class="badge badge-{{ 'ok' if balanced else 'bad' }}">{% if balanced %}平衡{% else %}不平{% endif %}</span>
+  </div>
+  <table class="table">
+    <thead><tr><th>账</th><th class="num">左</th><th class="num">右</th><th class="num">差额</th><th>说明</th></tr></thead>
+    <tbody>
+      {% for row in reconcile %}
+      <tr>
+        <td>{{ row.label }}</td>
+        <td class="num mono">{{ row.left|unitnum(row.unit) }}{% if row.unit == 'kWh' %}<span class="unit">kWh</span>{% elif row.unit == '元' %}<span class="unit">元</span>{% endif %}</td>
+        <td class="num mono">{{ row.right|unitnum(row.unit) }}{% if row.unit == 'kWh' %}<span class="unit">kWh</span>{% elif row.unit == '元' %}<span class="unit">元</span>{% endif %}</td>
+        <td class="num mono">{{ row.diff|unitnum(row.unit) }}<span class="unit">{{ row.unit }}</span></td>
+        <td class="cell-note">{{ row.note }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<section class="panel">
+  <div class="panel-head">
+    <h2 class="panel-title">最近批次</h2>
+    <a class="link" href="/batches">全部批次</a>
+  </div>
+  <table class="table table-compact">
+    <thead><tr><th>批次</th><th>样例</th><th>状态</th><th>开始</th></tr></thead>
+    <tbody>
+      {% for item in the_batches %}
+      <tr>
+        <td class="mono">{{ item.batch_id }}</td>
+        <td class="mono">{{ item.sample }}</td>
+        <td><span class="badge badge-{{ 'ok' if item.status == 'done' else 'bad' }}">{{ item.status|status }}</span></td>
+        <td class="mono">{{ item.created_at|localdt }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+<script src="/static/app.js" type="module"></script>
+<script src="/static/pipeline.js" type="module"></script>
+{% endblock %}
