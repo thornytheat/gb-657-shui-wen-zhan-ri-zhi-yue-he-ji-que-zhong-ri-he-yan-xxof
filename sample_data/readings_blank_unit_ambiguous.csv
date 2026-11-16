@@ -1,0 +1,4 @@
+meter_id,register,read_at,reading,unit,read_type,note
+M0001,TOTAL,2025-12-01T00:00:00+08:00,1000.0,kWh,N,
+M0001,TOTAL,2026-01-01T00:00:00+08:00,12.5MWh,,N,单位留空且读数自带单位
+M0001,TOTAL,2026-02-01T00:00:00+08:00,2100.0,kWh,N,

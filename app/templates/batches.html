@@ -20,6 +20,51 @@
 {% else %}
 <section class="panel">
   <div class="panel-head">
+    <h2 class="panel-title">规范绑定与升级</h2>
+    <span class="panel-sub mono">现行 {{ current_spec }}</span>
+  </div>
+  <dl class="manifest">
+    <div class="manifest-row"><dt>批次规范</dt><dd class="mono">{{ batch_spec.label if batch_spec else '—' }}</dd></div>
+    <div class="manifest-row"><dt>批次版本</dt><dd class="mono">{{ batch.spec_version or batch.rule_version }}</dd></div>
+    {% if upgrade_plan %}
+    <div class="manifest-row"><dt>可升级</dt><dd class="mono">{{ '是' if upgrade_plan.can_upgrade else '否' }}{% if upgrade_plan.reason %} · {{ upgrade_plan.reason }}{% endif %}</dd></div>
+    {% endif %}
+    {% for row in upgrade_history %}
+    <div class="manifest-row"><dt>升级 {{ row.status }}</dt><dd class="mono">{{ row.from_version }} → {{ row.to_version }} · {{ row.phase }}{% if row.note %} · {{ row.note }}{% endif %}</dd></div>
+    {% endfor %}
+    {% if upgrade_history and upgrade_history[0].status == 'running' %}
+    <div class="manifest-row"><dt>续跑</dt><dd class="mono">升级停在 {{ upgrade_history[0].phase }}，旧账未被覆盖，可继续</dd></div>
+    {% endif %}
+  </dl>
+  {% if upgrade_history %}
+  <table class="table table-compact">
+    <thead><tr><th>阶段</th><th>状态</th><th>原因码</th><th>说明</th></tr></thead>
+    <tbody>
+      {% for item in upgrade_history[0]['items'] %}
+      <tr><td>{{ item.stage }}</td><td>{{ item.status }}</td><td class="mono">{{ item.code or '—' }}</td><td class="cell-note">{{ item.detail }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% elif upgrade_plan and upgrade_plan.gaps %}
+  <table class="table table-compact">
+    <thead><tr><th class="num">行号</th><th>原因码</th><th>说明</th></tr></thead>
+    <tbody>
+      {% for gap in upgrade_plan.gaps %}
+      <tr><td class="num mono">{{ gap.lineno }}</td><td class="mono">{{ gap.code }}</td><td class="cell-note">{{ gap.detail }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+  {% if upgrade_plan %}
+  <div class="actions" style="padding:7px">
+    <button class="btn btn-primary upgrade-button" type="button"
+            data-batch="{{ batch.batch_id }}" data-to="{{ upgrade_plan.to_version }}">升级到现行规范</button>
+  </div>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <div class="panel-head">
     <h2 class="panel-title">运行清单</h2>
     <span class="badge badge-{{ 'ok' if batch.status == 'done' else 'bad' }}">{{ batch.status|status }}</span>
   </div>
@@ -74,13 +119,14 @@
   </div>
   <div class="table-wrap">
     <table class="table table-dense">
-      <thead><tr><th>批次</th><th>样例</th><th>状态</th><th>输入摘要</th><th>开始</th><th>操作</th></tr></thead>
+      <thead><tr><th>批次</th><th>样例</th><th>状态</th><th>规范</th><th>输入摘要</th><th>开始</th><th>操作</th></tr></thead>
       <tbody>
         {% for item in the_batches %}
         <tr>
           <td class="mono">{{ item.batch_id }}</td>
           <td class="mono">{{ item.sample }}</td>
           <td><span class="badge badge-{{ 'ok' if item.status == 'done' else 'bad' }}">{{ item.status|status }}</span></td>
+          <td class="mono" title="{{ item.spec_version or item.rule_version }}">{{ item.spec_version or item.rule_version }}</td>
           <td class="mono cell-raw" title="{{ item.input_digest }}">{{ item.input_digest[:12] }}</td>
           <td class="mono">{{ item.created_at|localdt }}</td>
           <td><button class="btn btn-ghost btn-sm retry-button" type="button" data-batch="{{ item.batch_id }}">重试</button></td>

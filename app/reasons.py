@@ -16,9 +16,13 @@ REASONS: dict[str, dict[str, str]] = {
     "E_SAMPLE_UNKNOWN": {"label": "样例不存在", "level": "error"},
     "E_CONTRACT_INVALID": {"label": "表计契约无效", "level": "error"},
     "E_BATCH_NOT_FOUND": {"label": "批次不存在", "level": "error"},
+    "E_INPUT_CHANGED": {"label": "原始样例已变更", "level": "error"},
+    "E_UPGRADE_IN_PROGRESS": {"label": "升级正在进行", "level": "error"},
+    "E_SPEC_UNKNOWN": {"label": "规范版本未知", "level": "error"},
     "Q_COLUMN_COUNT": {"label": "列数与表头不一致", "level": "error"},
     "Q_TRUNCATED_ROW": {"label": "末行被截断", "level": "error"},
     "Q_MISSING_READING": {"label": "读数为空值哨兵", "level": "error"},
+    "Q_MISSING_UNIT": {"label": "读数未明示单位", "level": "error"},
     "Q_BAD_READING": {"label": "读数无法解析", "level": "error"},
     "Q_BAD_TIME": {"label": "抄表时间无法解析", "level": "error"},
     "Q_UNKNOWN_METER": {"label": "表计不在契约", "level": "error"},
@@ -42,6 +46,12 @@ REASONS: dict[str, dict[str, str]] = {
     "K_UNIT_ASSUMED": {"label": "单位按契约补齐", "level": "info"},
     "K_UNIT_CONVERTED": {"label": "单位已折算", "level": "info"},
     "K_DUPLICATE_IDENTICAL": {"label": "重复行已合并", "level": "info"},
+    "K_UNIT_MISSING": {"label": "单位缺失（旧规范补齐）", "level": "warn"},
+    "K_UNIT_MATERIALIZED": {"label": "空单位已按契约固化", "level": "info"},
+    "K_SPEC_LEGACY": {"label": "按旧规范重建", "level": "info"},
+    "K_SPEC_UPGRADED": {"label": "已升级到现行规范", "level": "info"},
+    "K_SPEC_UPGRADE_PARTIAL": {"label": "升级中断，可续跑", "level": "warn"},
+    "K_SPEC_UPGRADE_REFUSED": {"label": "证据不足拒绝升级", "level": "error"},
 }
 
 

@@ -1,6 +1,6 @@
 # 样例数据说明
 
-八个读数样例共用同一条代码路径，没有任何特判分支。默认样例是 `readings_dirty.csv`。
+十个读数样例共用同一条代码路径，没有任何特判分支。默认样例是 `readings_dirty.csv`。
 
 | 文件 | 覆盖的真实问题 |
 |---|---|
@@ -12,6 +12,8 @@
 | `readings_header_only.csv` | 只有表头 |
 | `readings_blank.csv` | 表头之后全是空行 |
 | `readings_bad_header.csv` | 表头缺 `register` / `read_at` |
+| `readings_blank_unit.csv` | 两条读数单位列留空：现行规范整行隔离 `Q_MISSING_UNIT`，旧规范按契约补齐 |
+| `readings_blank_unit_ambiguous.csv` | 单位列留空但读数文本自带 `MWh`：旧规范能算，升级因证据不足被拒绝 |
 
 `meters.csv` 是表计契约：容量、综合倍率、单位、寄存器组合、换表事件（M0004 → M0005）。
 `prices.csv` 是电价：峰 1.05 / 平 0.65 / 谷 0.32 元每 kWh。

@@ -21,8 +21,11 @@ def intervals_from_store(rows: list[dict]) -> list[dict]:
 
 
 def run(settings, store, batch_id: str) -> dict:
-    contracts = contract_mod.load(settings)
-    prices = contract_mod.load_prices(settings)
+    """从批次快照契约与电价重算分摊：倍率、单位、换表关系、电价都按当时的值。"""
+    contracts = contract_mod.from_meter_rows(store.load_meters(batch_id))
+    if not contracts:
+        contracts = contract_mod.load(settings)
+    prices = store.load_prices(batch_id) or contract_mod.load_prices(settings)
     intervals = intervals_from_store(store.load_intervals(batch_id))
     result = allocate_mod.allocate(intervals, contracts, prices)
     result["contracts"] = contracts
@@ -31,9 +34,15 @@ def run(settings, store, batch_id: str) -> dict:
     return result
 
 
-def primary_map(settings) -> dict[str, str]:
-    return {meter.meter_id: meter.primary_register
-            for meter in contract_mod.load(settings).values()}
+def primary_map(settings, store=None, batch_id: str | None = None) -> dict[str, str]:
+    contracts = None
+    if store is not None and batch_id:
+        snapshot = contract_mod.from_meter_rows(store.load_meters(batch_id))
+        if snapshot:
+            contracts = snapshot
+    if not contracts:
+        contracts = contract_mod.load(settings)
+    return {meter.meter_id: meter.primary_register for meter in contracts.values()}
 
 
 def month_summary(allocations: list[dict],

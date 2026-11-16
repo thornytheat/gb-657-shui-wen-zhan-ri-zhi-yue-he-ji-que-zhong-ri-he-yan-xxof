@@ -47,13 +47,13 @@ def batch_key(sample_name: str, digest: str) -> str:
 def build(*, run_id: str, batch_id: str, batch_key_value: str, settings, sample: str,
           digest: str, inputs: list[dict], params: dict, started_at: str,
           finished_at: str, elapsed_ms: int, stages: list[dict], counters: dict,
-          reconcile: dict) -> dict:
+          reconcile: dict, rule_version: str | None = None) -> dict:
     return {
         "run_id": run_id,
         "batch_id": batch_id,
         "batch_key": batch_key_value,
         "sample": sample,
-        "rule_version": settings.rule_version,
+        "rule_version": rule_version or settings.rule_version,
         "input_digest": digest,
         "inputs": inputs,
         "params": params,

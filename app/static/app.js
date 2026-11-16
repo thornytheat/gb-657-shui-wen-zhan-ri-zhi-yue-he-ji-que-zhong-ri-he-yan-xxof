@@ -78,9 +78,32 @@ async function recompute(button, url, label) {
   if (state.busy) return;
   lock(button, label);
   try {
-    await postJSON(url, {});
-    notice("已重算");
+    const body = button && button.dataset.batch ? { batch_id: button.dataset.batch } : {};
+    const payload = await postJSON(url, body);
+    const spec = payload && payload.spec_version ? " · " + payload.spec_version : "";
+    notice("已重算" + spec);
     window.setTimeout(() => window.location.reload(), 400);
+  } catch (error) {
+    notice(String(error.message || error), true);
+  } finally {
+    unlock(button);
+  }
+}
+
+async function upgradeBatch(button, batchId, version) {
+  if (state.busy) return;
+  lock(button, "升级中");
+  try {
+    const body = { resume: true };
+    if (version) body.to_version = version;
+    const payload = await postJSON(
+      "/api/batches/" + encodeURIComponent(batchId) + "/upgrade", body);
+    if (payload.status === "refused") {
+      notice("升级被拒绝：" + (payload.reason || "证据不足"), true);
+    } else {
+      notice("批次 " + batchId + " · " + payload.status + " · " + (payload.spec_version || ""));
+    }
+    window.setTimeout(() => window.location.reload(), 700);
   } catch (error) {
     notice(String(error.message || error), true);
   } finally {
@@ -114,6 +137,12 @@ function bind() {
   }
   document.querySelectorAll("[data-print]").forEach((button) => {
     button.addEventListener("click", () => window.print());
+  });
+  document.querySelectorAll(".upgrade-button").forEach((button) => {
+    button.addEventListener("click", () => {
+      const batchId = button.dataset.batch;
+      if (batchId) upgradeBatch(button, batchId, button.dataset.to);
+    });
   });
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {

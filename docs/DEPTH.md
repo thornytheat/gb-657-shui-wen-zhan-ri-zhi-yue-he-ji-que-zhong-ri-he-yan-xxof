@@ -1,6 +1,6 @@
 # 深度登记 hydrocalendar（水文站日值月合计缺重日核验）
 
-- 规模：中型（7 个功能模块 / 6 个应用页 / 77 条测试）
+- 规模：中型（7 个功能模块 / 6 个应用页 / 120 条测试）
 - 核心规则：站点日值按版本选择而非后写覆盖，零雨与缺测分开；月合计用 Decimal，并以当地自然日日历核对完整度。
 - 使用者与工作流：流域数据员复核多站逐日雨量、缺重日、月合计与相邻站异常。
 
@@ -13,7 +13,7 @@
 | M3 质量隔离 | 看原因码分布与隔离行，导出隔离区 CSV | GET /api/quarantine、GET /api/quarantine.csv | `app/modules/m3_quality/rules.py` `app/modules/m3_quality/quarantine.py` | `tests/test_m3_quality.py` |
 | M4 区间还原 | 重算区间，看翻转、换表、估抄标记 | POST /api/intervals/rebuild、页面 /intervals | `app/modules/m4_intervals/restore.py` `app/modules/m4_intervals/rollover.py` `app/modules/m4_intervals/swaps.py` | `tests/test_m4_intervals.py` |
 | M5 月量计算 | 按版本选择日值并计算月合计与缺日 | POST /api/hydro/monthly、页面 /months | `app/modules/m5_months/hydro.py` `app/modules/m5_months/allocate.py` `app/modules/m5_months/weights.py` | `tests/test_m5_months.py` `tests/test_hydro_rules.py` |
-| M6 批次与对账 | 跑全流程、查批次历史、看四账、失败重试 | POST /api/runs、GET /api/batches、GET /api/reconcile、页面 /batches | `app/modules/m6_batches/service.py` `app/modules/m6_batches/compare.py` `app/modules/m6_batches/history.py` `app/modules/m6_batches/resume.py` | `tests/test_m6_batches.py` |
+| M6 批次与对账 | 跑全流程、查批次历史、看四账、失败重试、规范升级 | POST /api/runs、GET /api/batches、GET /api/reconcile、POST /api/batches/{id}/upgrade、页面 /batches | `app/modules/m6_batches/service.py` `app/modules/m6_batches/compare.py` `app/modules/m6_batches/history.py` `app/modules/m6_batches/resume.py` `app/modules/m6_batches/upgrade.py` `app/specs.py` | `tests/test_m6_batches.py` `tests/test_spec_upgrade.py` |
 | M7 导出 | 导出单一月报与运行证据 | GET /api/export/monthly.csv、页面 /report | `app/modules/m7_export/evidence.py` `app/modules/m7_export/csv_out.py` `app/modules/m7_export/manifest_out.py` | `tests/test_m7_export.py` |
 
 端到端：`tests/test_e2e.py`（脏样例 → 六页 200 → 四账 → 导出，含 4xx 失败输入与幂等重跑）。
@@ -38,6 +38,12 @@
 | TRAP-18 | 0 字节文件、只有表头、数据行全是空行 | 三种都返回「成功导入 0 行」，或直接除零 | 三个文件级原因码分开返回，不落半批数据 | `app/modules/m1_ingest/service.py` | `tests/test_m1_ingest.py::test_empty_states_return_distinct_codes` |
 | TRAP-23 | 区间止点与下一段起点都算一次 | 相邻区间重复计入一天，月度用量偏高 | 区间与月桶都声明左闭右开 `[起, 止)`，相邻段首尾相接 | `app/modules/m5_months/weights.py`、`app/modules/m4_intervals/restore.py` | `tests/test_m5_months.py::test_month_slices_are_half_open`、`tests/test_m4_intervals.py::test_intervals_are_half_open_and_contiguous` |
 | TRAP-24 | 各月/各分量各自四舍五入后合计不等 | 分完差 0.001~0.02，账永远差几分 | 最大余额法分月；分量残差并入最大分量；账单先合计再舍入，分项补差 | `app/modules/m5_months/weights.py`、`app/modules/m5_months/tou.py` | `tests/test_m5_months.py::test_largest_remainder_keeps_total_exact`、`tests/test_m5_months.py::test_tou_components_closed_to_total` |
+| TRAP-25 | 新规范要求逐行单位，直接全量套到旧账上 | 旧账里单位留空但按契约补齐的行被整批隔离，历史用量凭空消失 | 规范版本写进批次；旧批次绑定 `1.0.0` 仍按契约补齐，新批次才要求明示 | `app/specs.py`、`app/modules/m2_contract/service.py`、`app/modules/m6_batches/service.py` | `tests/test_spec_upgrade.py::test_legacy_batch_fills_unit_from_contract`、`tests/test_spec_upgrade.py::test_new_batch_missing_unit_is_quarantined` |
+| TRAP-26 | 升级旧账时重读现行 `meters.csv` | 倍率被改过，重建区间用量整体翻倍，旧账与月报对不上 | 批次落库时快照契约与电价，重建只读快照 | `app/store.py`、`app/modules/m6_batches/service.py`、`app/modules/m4_intervals/service.py` | `tests/test_spec_upgrade.py::test_legacy_batch_binds_contract_snapshot`、`tests/test_spec_upgrade.py::test_migrated_batch_reads_old_multiplier_from_snapshot` |
+| TRAP-27 | 单位列留空但读数文本自带 `MWh` 后缀 | 后缀被数字解析静默剥掉，迁移时按契约单位补齐会把 12.5MWh 当 12.5kWh | 升级预演把「单位空 + 读数带单位后缀」判为证据不足，整体拒绝 | `app/modules/m6_batches/upgrade.py` | `tests/test_spec_upgrade.py::test_upgrade_refuses_when_evidence_insufficient` |
+| TRAP-28 | 升级进程中途退出 | 半新半旧的批次行混在一起，页面四账不平且无法判断哪版为准 | 重算全在内存，最后单事务覆盖；中断只留 `running` 记录，旧账原样，可续跑 | `app/modules/m6_batches/upgrade.py`、`app/store.py` | `tests/test_spec_upgrade.py::test_upgrade_stage_failure_leaves_old_account_intact`、`tests/test_spec_upgrade.py::test_upgrade_resumes_after_interruption` |
+| TRAP-29 | 升级后重试把固化过的空单位行重新隔离 | 点一次「重试」用量与隔离数倒退，升级白做 | 已升级批次重试沿用 `K_UNIT_MATERIALIZED` 固化单位 | `app/modules/m6_batches/service.py` | `tests/test_spec_upgrade.py::test_retry_after_upgrade_keeps_materialized_units` |
+| TRAP-30 | 并发切换规范时两条线程各建一次升级 | 一个批次挂两条升级记录，重试还新增批次 | upgrade_id 确定性 + `INSERT OR IGNORE` 原子占位；重试固定 batch_id | `app/store.py`、`app/modules/m6_batches/upgrade.py` | `tests/test_spec_upgrade.py::test_concurrent_upgrade_creates_single_record`、`tests/test_spec_upgrade.py::test_retry_keeps_bound_spec_and_no_new_batch` |
 
 ## 对账规则
 

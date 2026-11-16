@@ -15,7 +15,9 @@ def _context(settings, store, batch_id: str | None) -> tuple[dict, str]:
 
 def monthly_csv(settings, store, batch_id: str | None = None) -> tuple[str, str]:
     batch, ident = _context(settings, store, batch_id)
-    contracts = contract_mod.load(settings)
+    contracts = contract_mod.from_meter_rows(store.load_meters(ident))
+    if not contracts:
+        contracts = contract_mod.load(settings)
     allocations = store.load_allocations(ident)
     bills = store.load_bills(ident)
     body = csv_out.render(evidence.MONTHLY_HEADER,

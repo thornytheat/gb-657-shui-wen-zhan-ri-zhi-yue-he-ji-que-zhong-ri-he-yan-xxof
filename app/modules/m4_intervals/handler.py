@@ -13,16 +13,20 @@ router = APIRouter(tags=["M4 区间还原"])
 
 @router.post("/api/intervals/rebuild")
 def api_rebuild(payload: dict | None = None, ctx: Ctx = Depends(get_ctx)) -> dict:
-    batch_id = (payload or {}).get("batch_id")
+    body = payload or {}
+    batch_id = body.get("batch_id")
     batch = resume_mod.require_batch(
         ctx.store, batch_id or (ctx.current_batch() or {}).get("batch_id", ""))
     result = service.rebuild(ctx.settings, ctx.store, batch["batch_id"])
     return {
         "batch_id": result["batch_id"],
+        "spec_version": result["spec_version"],
         "intervals": service.payload(result["intervals"]),
         "totals": {key: str(value) for key, value in result["totals"].items()},
         "method_counts": result["method_counts"],
         "swaps": result["swaps"],
+        "usage_check": service.usage_check(ctx.store, result["batch_id"],
+                                           result["intervals"]),
     }
 
 
@@ -33,6 +37,7 @@ def page_intervals(request: Request, batch_id: str | None = None,
     intervals: list[dict] = []
     method_counts: dict = {}
     swaps: list[dict] = []
+    usage_check = None
     if batch is not None:
         intervals = sorted(
             ctx.store.load_intervals(batch["batch_id"]),
@@ -42,7 +47,10 @@ def page_intervals(request: Request, batch_id: str | None = None,
                               item["start_at"]))
         for item in intervals:
             method_counts[item["method"]] = method_counts.get(item["method"], 0) + 1
-        swaps = service.swaps_payload(ctx.settings)
+        swaps = service.swaps_payload(ctx.settings, ctx.store, batch["batch_id"])
+        usage_check = service.usage_check(ctx.store, batch["batch_id"])
     return render(request, "intervals.html", page="intervals", page_title="区间还原",
                   batch=batch, intervals=intervals, method_counts=method_counts,
-                  swaps=swaps, flagged=service.flagged(intervals))
+                  swaps=swaps, flagged=service.flagged(intervals),
+                  usage_check=usage_check,
+                  rebuild_batches=ctx.store.list_batches(limit=20))

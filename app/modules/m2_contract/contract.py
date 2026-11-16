@@ -119,6 +119,35 @@ def load(settings) -> dict[str, MeterContract]:
     return parse_rows(rows)
 
 
+def from_meter_rows(rows: list[dict]) -> dict[str, MeterContract]:
+    """从批次快照重建契约：旧账用当时的倍率、单位与换表关系，不读现行 meters.csv。
+
+    `store.load_meters` 已把 registers 拆成列表、倍率与容量转成 Decimal，
+    这里只做类型归一，不再做契约有效性判断（快照写入前已经校验过）。
+    """
+    contracts: dict[str, MeterContract] = {}
+    for row in rows:
+        meter_id = str(row["meter_id"])
+        registers = row["registers"]
+        if isinstance(registers, str):
+            registers = [item for item in registers.split(";") if item]
+        replaced_at = row.get("replaced_at")
+        if isinstance(replaced_at, str) and replaced_at:
+            replaced_at = _parse_instant(replaced_at)
+        contracts[meter_id] = MeterContract(
+            meter_id=meter_id,
+            name=row.get("name") or meter_id,
+            capacity=Decimal(str(row["capacity"])),
+            multiplier=Decimal(str(row["multiplier"])),
+            unit=row["unit"],
+            registers=tuple(registers),
+            replaced_at=replaced_at,
+            replaced_by=row.get("replaced_by") or None,
+            tariff=row.get("tariff") or "单一制",
+        )
+    return contracts
+
+
 def load_prices(settings) -> dict[str, Decimal]:
     path = Path(settings.sample_dir) / config.PRICES_FILE
     if not path.is_file():
@@ -139,6 +168,22 @@ def predecessors(contracts: dict[str, MeterContract]) -> dict[str, MeterContract
         if contract.replaced_by:
             out.setdefault(contract.replaced_by, contract)
     return out
+
+
+def meter_rows(contracts: dict[str, MeterContract], *,
+               source_sha256: str = "") -> list[dict]:
+    """批次契约快照的落库形状：倍率、单位、换表关系都固定在当时的值。"""
+    rows = []
+    for contract in sorted(contracts.values(), key=lambda c: c.meter_id):
+        rows.append({
+            "meter_id": contract.meter_id, "name": contract.name,
+            "capacity": contract.capacity, "multiplier": contract.multiplier,
+            "unit": contract.unit, "registers": list(contract.registers),
+            "replaced_at": (contract.replaced_at.isoformat()
+                            if contract.replaced_at else None),
+            "replaced_by": contract.replaced_by, "tariff": contract.tariff,
+        })
+    return rows
 
 
 def payload(contracts: dict[str, MeterContract]) -> list[dict]:

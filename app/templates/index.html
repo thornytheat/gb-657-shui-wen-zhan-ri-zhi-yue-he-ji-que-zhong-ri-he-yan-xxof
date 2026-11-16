@@ -24,6 +24,48 @@
 
 <div class="notice" id="notice" role="status" hidden></div>
 
+{% if batch %}
+<section class="panel">
+  <div class="panel-head">
+    <h2 class="panel-title">规范绑定</h2>
+    <span class="panel-sub mono">{{ batch_spec.version if batch_spec else rule_version }}</span>
+  </div>
+  <dl class="manifest">
+    <div class="manifest-row"><dt>批次规范</dt><dd class="mono">{{ batch_spec.label if batch_spec else '—' }}</dd></div>
+    <div class="manifest-row"><dt>现行规范</dt><dd class="mono">{{ current_spec }}</dd></div>
+    {% if upgrade_plan %}
+    <div class="manifest-row"><dt>可升级</dt><dd class="mono">{{ '是' if upgrade_plan.can_upgrade else '否' }}{% if upgrade_plan.reason %} · {{ upgrade_plan.reason }}{% endif %}</dd></div>
+    <div class="manifest-row"><dt>目标版本</dt><dd class="mono">{{ upgrade_plan.to_label }}</dd></div>
+    {% endif %}
+    {% for row in upgrade_history %}
+    <div class="manifest-row"><dt>升级 {{ row.status }}</dt><dd class="mono">{{ row.from_version }} → {{ row.to_version }} · {{ row.phase }}{% if row.note %} · {{ row.note }}{% endif %}</dd></div>
+    {% endfor %}
+    {% if upgrade_history and upgrade_history[0].status == 'running' %}
+    <div class="manifest-row"><dt>续跑</dt><dd class="mono">升级停在 {{ upgrade_history[0].phase }}，旧账未被覆盖，可继续</dd></div>
+    {% endif %}
+  </dl>
+  <div class="actions" style="padding:7px">
+    {% if upgrade_plan %}
+    <button class="btn btn-primary upgrade-button" type="button"
+            data-batch="{{ batch.batch_id }}" data-to="{{ upgrade_plan.to_version }}">
+      {{ '继续升级' if upgrade_history and upgrade_history[0].status == 'running' else '升级到现行规范' }}
+    </button>
+    {% endif %}
+    <a class="btn btn-ghost" href="/api/specs/upgrades?batch_id={{ batch.batch_id }}">升级记录</a>
+  </div>
+  {% if upgrade_plan and upgrade_plan.gaps %}
+  <table class="table table-compact">
+    <thead><tr><th class="num">行号</th><th>原因码</th><th>说明</th></tr></thead>
+    <tbody>
+      {% for gap in upgrade_plan.gaps %}
+      <tr><td class="num mono">{{ gap.lineno }}</td><td class="mono">{{ gap.code }}</td><td class="cell-note">{{ gap.detail }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</section>
+{% endif %}
+
 {% if not batch %}
 <section class="empty">
   <p class="empty-line">还没有运行记录，点开始处理。</p>

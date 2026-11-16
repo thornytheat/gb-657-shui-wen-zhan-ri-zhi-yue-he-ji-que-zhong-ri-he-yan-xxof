@@ -27,7 +27,8 @@ def api_allocate(payload: dict | None = None, ctx: Ctx = Depends(get_ctx)) -> di
         ctx.store, batch_id or (ctx.current_batch() or {}).get("batch_id", ""))
     result = service.run(ctx.settings, ctx.store, batch["batch_id"])
     body = service.payload(result["allocations"], result["bills"],
-                           service.primary_map(ctx.settings))
+                           service.primary_map(ctx.settings, ctx.store,
+                                               batch["batch_id"]))
     body["batch_id"] = result["batch_id"]
     body["stats"] = {key: str(value) if hasattr(value, "as_tuple") else value
                      for key, value in result["stats"].items()}
@@ -44,7 +45,9 @@ def page_months(request: Request, batch_id: str | None = None,
     if batch is not None:
         allocations = ctx.store.load_allocations(batch["batch_id"])
         bills = ctx.store.load_bills(batch["batch_id"])
-        groups = service.rows_by_month(allocations, service.primary_map(ctx.settings))
+        groups = service.rows_by_month(
+            allocations, service.primary_map(ctx.settings, ctx.store,
+                                             batch["batch_id"]))
         adjustments = sum(1 for item in allocations if item["tou_adjusted"])
     demo_records = [
         {"station": "0012", "date": "2024-02-27", "rainfall_mm": "0.0", "version": 1},

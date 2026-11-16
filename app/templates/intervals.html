@@ -8,8 +8,18 @@
     </p>
   </div>
   <div class="actions">
-    <button class="btn btn-primary" id="rebuild-button" type="button">重算区间</button>
-    <a class="btn btn-ghost" href="/api/export/intervals.csv">区间 CSV</a>
+    <form class="field-inline" method="get" action="/intervals">
+      <label class="field-inline">
+        <span class="field-label">批次</span>
+        <select class="select" name="batch_id" onchange="this.form.submit()">
+          {% for item in rebuild_batches %}
+          <option value="{{ item.batch_id }}"{% if batch and item.batch_id == batch.batch_id %} selected{% endif %}>{{ item.batch_id }} · {{ item.sample }} · {{ item.spec_version or item.rule_version }}</option>
+          {% endfor %}
+        </select>
+      </label>
+    </form>
+    <button class="btn btn-primary" id="rebuild-button" type="button" data-batch="{% if batch %}{{ batch.batch_id }}{% endif %}">重算区间</button>
+    <a class="btn btn-ghost" href="/api/export/intervals.csv{% if batch %}?batch_id={{ batch.batch_id }}{% endif %}">区间 CSV</a>
   </div>
 </section>
 
@@ -25,6 +35,25 @@
   <div class="kpi"><span class="kpi-label">新表首读</span><span class="kpi-value mono">{{ method_counts.replacement_first or 0 }}</span></div>
   <div class="kpi"><span class="kpi-label">带标记</span><span class="kpi-value mono">{{ flagged|length }}</span></div>
 </section>
+
+{% if usage_check %}
+<section class="panel">
+  <div class="panel-head">
+    <h2 class="panel-title">用量核对</h2>
+    <span class="badge badge-{{ 'ok' if usage_check.matches else 'bad' }}">{% if usage_check.matches %}一致{% else %}不一致{% endif %}</span>
+  </div>
+  <table class="table table-compact">
+    <thead><tr><th>口径</th><th class="num">用量</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td>区间账</td><td class="num mono">{{ usage_check.interval_usage|kwh }}<span class="unit">kWh</span></td><td class="cell-note">批次落库时的区间用量合计</td></tr>
+      <tr><td>区间重算</td><td class="num mono">{{ usage_check.recomputed_usage|kwh }}<span class="unit">kWh</span></td><td class="cell-note">按批次契约快照重算 {{ usage_check.rebuilt_count }} 段</td></tr>
+      <tr><td>月度账</td><td class="num mono">{{ usage_check.month_usage|kwh }}<span class="unit">kWh</span></td><td class="cell-note">月度分摊用量合计</td></tr>
+      <tr><td>差额</td><td class="num mono strong">{{ usage_check.interval_minus_month|kwh }}<span class="unit">kWh</span></td><td class="cell-note">区间账 − 月度账，应为 0.000</td></tr>
+      <tr><td>重算变动</td><td class="num mono">{{ usage_check.rebuilt_changed }}</td><td class="cell-note">重算后用量或区间号与落库结果不同的段数（{{ usage_check.interval_count }} 段落库）</td></tr>
+    </tbody>
+  </table>
+</section>
+{% endif %}
 
 {% if swaps %}
 <section class="panel">

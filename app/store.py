@@ -13,6 +13,8 @@ from contextlib import contextmanager
 from decimal import Decimal
 from pathlib import Path
 
+from . import specs
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS batches (
     batch_id TEXT PRIMARY KEY,
@@ -24,6 +26,7 @@ CREATE TABLE IF NOT EXISTS batches (
     finished_at TEXT,
     input_digest TEXT NOT NULL,
     rule_version TEXT NOT NULL,
+    spec_version TEXT NOT NULL DEFAULT '',
     params_json TEXT NOT NULL DEFAULT '{}',
     note TEXT NOT NULL DEFAULT '',
     updated_at TEXT
@@ -74,6 +77,23 @@ CREATE TABLE IF NOT EXISTS totals (
 CREATE TABLE IF NOT EXISTS manifests (
     batch_id TEXT PRIMARY KEY, json TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS batch_prices (
+    batch_id TEXT NOT NULL, register TEXT NOT NULL, price TEXT NOT NULL,
+    PRIMARY KEY (batch_id, register)
+);
+CREATE TABLE IF NOT EXISTS spec_upgrades (
+    upgrade_id TEXT PRIMARY KEY, batch_id TEXT NOT NULL,
+    from_version TEXT NOT NULL, to_version TEXT NOT NULL,
+    status TEXT NOT NULL, phase TEXT NOT NULL,
+    started_at TEXT NOT NULL, finished_at TEXT,
+    from_digest TEXT NOT NULL, to_digest TEXT,
+    note TEXT NOT NULL DEFAULT '', detail_json TEXT NOT NULL DEFAULT '{}'
+);
+CREATE INDEX IF NOT EXISTS idx_upgrades_batch ON spec_upgrades(batch_id, status);
+CREATE TABLE IF NOT EXISTS spec_upgrade_items (
+    upgrade_id TEXT NOT NULL, seq INTEGER NOT NULL, stage TEXT NOT NULL,
+    status TEXT NOT NULL, code TEXT, detail TEXT NOT NULL DEFAULT ''
+);
 """
 
 
@@ -91,6 +111,13 @@ class Store:
                        conn.execute("PRAGMA table_info(batches)").fetchall()}
             if "updated_at" not in columns:
                 conn.execute("ALTER TABLE batches ADD COLUMN updated_at TEXT")
+            if "spec_version" not in columns:
+                conn.execute(
+                    "ALTER TABLE batches ADD COLUMN spec_version TEXT NOT NULL DEFAULT ''")
+                # 迁移前写入的批次都诞生在旧规范下：绑定 1.0.0，不回填成现行规范。
+                conn.execute(
+                    "UPDATE batches SET spec_version=? WHERE spec_version=''",
+                    (specs.LEGACY,))
 
     @contextmanager
     def connect(self):
@@ -149,8 +176,9 @@ class Store:
         with self.connect() as conn:
             conn.execute(
                 """INSERT INTO batches (batch_id,batch_key,run_id,sample,status,created_at,
-                        finished_at,input_digest,rule_version,params_json,note,updated_at)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+                        finished_at,input_digest,rule_version,spec_version,params_json,note,
+                        updated_at)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
                    ON CONFLICT(batch_id) DO UPDATE SET
                      status=excluded.status, finished_at=excluded.finished_at,
                      note=excluded.note, run_id=excluded.run_id,
@@ -158,6 +186,7 @@ class Store:
                 (batch["batch_id"], batch["batch_key"], batch["run_id"], batch["sample"],
                  batch["status"], batch["created_at"], batch.get("finished_at"),
                  batch["input_digest"], batch["rule_version"],
+                 batch.get("spec_version") or batch["rule_version"],
                  json.dumps(batch.get("params", {}), ensure_ascii=False),
                  note or batch.get("note", ""), batch.get("updated_at")))
             conn.execute("DELETE FROM stages WHERE batch_id=?", (batch["batch_id"],))
@@ -179,12 +208,16 @@ class Store:
     def save_run(self, *, batch: dict, meters: list[dict], readings: list[dict],
                  intervals: list[dict], allocations: list[dict], bills: list[dict],
                  quarantine: list[dict], stages: list[dict], totals: dict,
-                 manifest_json: dict) -> None:
+                 manifest_json: dict, prices: dict | None = None) -> None:
         b = batch["batch_id"]
         with self.connect() as conn:
             for table in ("meters", "readings", "intervals", "allocations", "bills",
-                          "quarantine", "stages", "totals"):
+                          "quarantine", "stages", "totals", "batch_prices"):
                 conn.execute(f"DELETE FROM {table} WHERE batch_id=?", (b,))
+            for key, value in (prices or {}).items():
+                conn.execute(
+                    "INSERT INTO batch_prices (batch_id,register,price) VALUES (?,?,?)",
+                    (b, key, str(value)))
             for m in meters:
                 conn.execute(
                     """INSERT INTO meters (batch_id,meter_id,name,capacity,multiplier,unit,
@@ -255,15 +288,20 @@ class Store:
                 (b, json.dumps(manifest_json, ensure_ascii=False)))
             conn.execute(
                 """INSERT INTO batches (batch_id,batch_key,run_id,sample,status,created_at,
-                        finished_at,input_digest,rule_version,params_json,note,updated_at)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+                        finished_at,input_digest,rule_version,spec_version,params_json,note,
+                        updated_at)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
                    ON CONFLICT(batch_id) DO UPDATE SET
                      status=excluded.status, finished_at=excluded.finished_at,
                      run_id=excluded.run_id, note=excluded.note,
+                     input_digest=excluded.input_digest,
+                     rule_version=excluded.rule_version,
+                     spec_version=excluded.spec_version,
                      updated_at=excluded.updated_at""",
                 (b, batch["batch_key"], batch["run_id"], batch["sample"],
                  batch["status"], batch["created_at"], batch.get("finished_at"),
                  batch["input_digest"], batch["rule_version"],
+                 batch.get("spec_version") or batch["rule_version"],
                  json.dumps(batch.get("params", {}), ensure_ascii=False),
                  batch.get("note", ""), batch.get("updated_at")))
 
@@ -334,6 +372,89 @@ class Store:
     def load_totals(self, batch_id: str) -> dict:
         rows = self._all("SELECT key, value FROM totals WHERE batch_id=?", (batch_id,))
         return {r["key"]: r["value"] for r in rows}
+
+    def load_prices(self, batch_id: str) -> dict:
+        rows = self._all(
+            "SELECT register, price FROM batch_prices WHERE batch_id=?", (batch_id,))
+        return {r["register"]: _dec(r["price"]) for r in rows}
+
+    # ---------- 规范升级记录 ----------
+    def get_upgrade(self, upgrade_id: str) -> dict | None:
+        with self.connect() as conn:
+            row = conn.execute("SELECT * FROM spec_upgrades WHERE upgrade_id=?",
+                               (upgrade_id,)).fetchone()
+        return dict(row) if row else None
+
+    def find_upgrade(self, batch_id: str, to_version: str) -> dict | None:
+        """同一批次升到同一目标版本只保留一条记录，重试续跑不新增。"""
+        with self.connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM spec_upgrades WHERE batch_id=? AND to_version=? "
+                "ORDER BY started_at DESC, rowid DESC LIMIT 1",
+                (batch_id, to_version)).fetchone()
+        return dict(row) if row else None
+
+    def list_upgrades(self, batch_id: str | None = None,
+                      limit: int = 50) -> list[dict]:
+        sql = "SELECT * FROM spec_upgrades"
+        args: tuple = ()
+        if batch_id:
+            sql += " WHERE batch_id=?"
+            args = (batch_id,)
+        sql += " ORDER BY started_at DESC, rowid DESC LIMIT ?"
+        return self._all(sql, args + (limit,))
+
+    def save_upgrade(self, upgrade: dict) -> None:
+        with self.connect() as conn:
+            conn.execute(
+                """INSERT INTO spec_upgrades (upgrade_id,batch_id,from_version,to_version,
+                        status,phase,started_at,finished_at,from_digest,to_digest,note,
+                        detail_json)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+                   ON CONFLICT(upgrade_id) DO UPDATE SET
+                     status=excluded.status, phase=excluded.phase,
+                     finished_at=excluded.finished_at, to_digest=excluded.to_digest,
+                     note=excluded.note, detail_json=excluded.detail_json""",
+                (upgrade["upgrade_id"], upgrade["batch_id"],
+                 upgrade["from_version"], upgrade["to_version"], upgrade["status"],
+                 upgrade["phase"], upgrade["started_at"], upgrade.get("finished_at"),
+                 upgrade["from_digest"], upgrade.get("to_digest"),
+                 upgrade.get("note", ""),
+                 json.dumps(upgrade.get("detail", {}), ensure_ascii=False, default=str)))
+
+    def claim_upgrade(self, upgrade: dict) -> bool:
+        """原子占位：同一 upgrade_id 只有第一个写入者拿到 running 状态。
+
+        已经存在 done / running 记录时返回 False，调用方据此复用或等待，
+        不会并发开第二条升级，也不会新增批次。
+        """
+        with self.connect() as conn:
+            cursor = conn.execute(
+                """INSERT OR IGNORE INTO spec_upgrades (upgrade_id,batch_id,from_version,
+                        to_version,status,phase,started_at,finished_at,from_digest,
+                        to_digest,note,detail_json)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (upgrade["upgrade_id"], upgrade["batch_id"],
+                 upgrade["from_version"], upgrade["to_version"], "running",
+                 "freeze", upgrade["started_at"], None,
+                 upgrade["from_digest"], None, "", "{}"))
+            return cursor.rowcount > 0
+
+    def load_upgrade_items(self, upgrade_id: str) -> list[dict]:
+        return self._all(
+            "SELECT * FROM spec_upgrade_items WHERE upgrade_id=? ORDER BY seq",
+            (upgrade_id,))
+
+    def replace_upgrade_items(self, upgrade_id: str, items: list[dict]) -> None:
+        with self.connect() as conn:
+            conn.execute("DELETE FROM spec_upgrade_items WHERE upgrade_id=?",
+                         (upgrade_id,))
+            for seq, item in enumerate(items):
+                conn.execute(
+                    """INSERT INTO spec_upgrade_items (upgrade_id,seq,stage,status,code,
+                        detail) VALUES (?,?,?,?,?,?)""",
+                    (upgrade_id, seq, item["stage"], item["status"],
+                     item.get("code"), item.get("detail", "")))
 
     def load_manifest(self, batch_id: str) -> dict | None:
         with self.connect() as conn:

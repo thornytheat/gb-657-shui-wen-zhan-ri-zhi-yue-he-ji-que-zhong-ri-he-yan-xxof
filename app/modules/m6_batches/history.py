@@ -26,7 +26,8 @@ def batch_id_for(batch_key: str) -> str:
 def build_batch(*, batch_key: str, run_id: str, sample: str, status: str,
                 digest: str, rule_version: str, params: dict,
                 created_at: str, finished_at: str | None = None,
-                updated_at: str | None = None, note: str = "") -> dict:
+                updated_at: str | None = None, note: str = "",
+                spec_version: str | None = None) -> dict:
     return {
         "batch_id": batch_id_for(batch_key),
         "batch_key": batch_key,
@@ -38,6 +39,7 @@ def build_batch(*, batch_key: str, run_id: str, sample: str, status: str,
         "updated_at": updated_at or created_at,
         "input_digest": digest,
         "rule_version": rule_version,
+        "spec_version": spec_version or rule_version,
         "params": params,
         "note": note,
     }

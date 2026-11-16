@@ -14,11 +14,14 @@ from dataclasses import dataclass, replace
 from decimal import Decimal
 from pathlib import Path
 
+from . import specs
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 CHINA_TZ = dt.timezone(dt.timedelta(hours=8), "Asia/Shanghai")
 UTC = dt.timezone.utc
 
-RULE_VERSION = "hydrocalendar/1.0.0"
+# 现行规范：只作用于之后新开的批次。历史批次按各自绑定的版本重建。
+RULE_VERSION = specs.CURRENT
 
 USAGE_QUANT = Decimal("0.001")
 MONEY_QUANT = Decimal("0.01")
@@ -80,6 +83,8 @@ SAMPLES = {
     "readings_header_only.csv": "仅表头",
     "readings_blank.csv": "全空行",
     "readings_bad_header.csv": "表头缺列",
+    "readings_blank_unit.csv": "空单位 · 新规隔离 / 旧规补齐",
+    "readings_blank_unit_ambiguous.csv": "空单位且读数带单位 · 证据不足",
 }
 DEFAULT_SAMPLE = "readings_dirty.csv"
 METERS_FILE = "meters.csv"

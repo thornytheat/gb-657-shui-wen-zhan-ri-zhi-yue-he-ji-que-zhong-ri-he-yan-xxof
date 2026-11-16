@@ -6,12 +6,24 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from ... import config, reasons
+from ... import config, reasons, specs
 from . import coerce, contract, units
 
 
 def interpret_rows(rows: list[dict], contracts: dict[str, contract.MeterContract],
+                   spec_version: str | None = None,
+                   *, materialize_missing_unit: bool = False,
                    ) -> tuple[list[dict], list[dict], list[dict]]:
+    """按批次绑定的规范解释单元格。
+
+    现行规范要求逐行明示单位：`unit` 空/哨兵 → `Q_MISSING_UNIT` 整行隔离。
+    旧规范允许空单位按契约补齐，留 `K_UNIT_ASSUMED`。
+
+    `materialize_missing_unit` 只给规范升级用：旧账空单位读数在契约快照里能查到
+    唯一单位时，把该单位固化到这一行（`K_UNIT_MATERIALIZED`），让升级后的批次
+    按现行规范可复算；证据不够的行仍然隔离，由升级入口整体拒绝。
+    """
+    spec = specs.get(spec_version or specs.DEFAULT)
     records: list[dict] = []
     quarantine: list[dict] = []
     diagnostics: list[dict] = []
@@ -51,7 +63,24 @@ def interpret_rows(rows: list[dict], contracts: dict[str, contract.MeterContract
             continue
         unit_raw = coerce.normalize_text(cells.get("unit"))
         flags: list[str] = []
-        if unit_raw:
+        unit_missing = not unit_raw or coerce.is_sentinel(unit_raw)
+        if unit_missing:
+            evidence = evidence_problem(found, reading)
+            if spec.unit_required and not materialize_missing_unit:
+                quarantine.append(_q(row, "Q_MISSING_UNIT",
+                                     "现行规范要求逐行明示单位，单位为空",
+                                     meter_id, "unit"))
+                continue
+            if spec.unit_required and evidence:
+                quarantine.append(_q(row, "Q_MISSING_UNIT",
+                                     f"单位缺失且证据不足：{evidence}",
+                                     meter_id, "unit"))
+                continue
+            if spec.unit_required:
+                flags.append("K_UNIT_MATERIALIZED")
+            else:
+                flags.extend(["K_UNIT_MISSING", "K_UNIT_ASSUMED"])
+        else:
             canonical = units.canonical_unit(unit_raw)
             if canonical is None:
                 quarantine.append(_q(row, "Q_BAD_UNIT",
@@ -65,8 +94,6 @@ def interpret_rows(rows: list[dict], contracts: dict[str, contract.MeterContract
                 continue
             if canonical != found.unit:
                 flags.append("K_UNIT_CONVERTED")
-        else:
-            flags.append("K_UNIT_ASSUMED")
         try:
             read_type = coerce.parse_read_type(cells.get("read_type"))
         except coerce.CoerceError as exc:
@@ -82,12 +109,26 @@ def interpret_rows(rows: list[dict], contracts: dict[str, contract.MeterContract
             "reading_text": (raw_reading or "").strip(),
             "unit_raw": unit_raw,
             "unit_norm": found.unit,
+            "unit_materialized": bool(unit_missing and spec.unit_required),
             "read_type": read_type,
             "raw": row.get("raw", ""),
             "note": coerce.normalize_text(cells.get("note")),
             "flags": flags,
         })
     return records, quarantine, diagnostics
+
+
+def evidence_problem(meter: contract.MeterContract, reading: Decimal | None) -> str:
+    """空单位行能否安全固化：契约单位唯一且读数已成功解析。
+
+    返回空串表示证据充分；否则返回缺失项，升级入口据此整体拒绝。
+    """
+    problems = []
+    if units.canonical_unit(meter.unit) is None:
+        problems.append("契约单位无法识别")
+    if reading is None:
+        problems.append("读数无法解析")
+    return "、".join(problems)
 
 
 def _q(row: dict, code: str, detail: str, meter_id: str, field: str) -> dict:
@@ -97,9 +138,12 @@ def _q(row: dict, code: str, detail: str, meter_id: str, field: str) -> dict:
             "detail": detail}
 
 
-def preview(cells: dict[str, str], contracts: dict[str, contract.MeterContract]) -> dict:
+def preview(cells: dict[str, str], contracts: dict[str, contract.MeterContract],
+            spec_version: str | None = None) -> dict:
     """单行试解析：接口用来给使用者看「这行会被读成什么」。"""
-    out: dict = {"input": dict(cells), "ok": True, "code": None, "detail": ""}
+    spec = specs.get(spec_version or specs.DEFAULT)
+    out: dict = {"input": dict(cells), "ok": True, "code": None, "detail": "",
+                 "spec_version": spec.version}
     meter_id = coerce.normalize_text(cells.get("meter_id"))
     found = contracts.get(meter_id)
     if found is None:
@@ -111,7 +155,13 @@ def preview(cells: dict[str, str], contracts: dict[str, contract.MeterContract])
         reading = coerce.parse_decimal(cells.get("reading"))
         read_type = coerce.parse_read_type(cells.get("read_type"))
         unit_raw = coerce.normalize_text(cells.get("unit"))
-        canonical = units.canonical_unit(unit_raw) if unit_raw else found.unit
+        if not unit_raw or coerce.is_sentinel(unit_raw):
+            if spec.unit_required:
+                raise coerce.CoerceError(
+                    "Q_MISSING_UNIT", "现行规范要求逐行明示单位，单位为空")
+            canonical = found.unit
+        else:
+            canonical = units.canonical_unit(unit_raw)
         if canonical is None:
             raise coerce.CoerceError("Q_BAD_UNIT", f"单位无法识别 {unit_raw!r}")
         value = None if reading is None else units.convert(reading, canonical, found.unit)
